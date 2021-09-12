@@ -1,9 +1,9 @@
 config_version: 1.0
 training:
   trainer: mmf
-  seed: 46190763
+  seed: 33859040
   experiment_name: run
-  max_updates: 50000
+  max_updates: 22000
   max_epochs: null
   log_interval: 100
   logger_level: info
@@ -12,41 +12,35 @@ training:
   should_not_log: false
   colored_logs: true
   tensorboard: false
-  batch_size: 256
+  batch_size: 32
   batch_size_per_device: null
   update_frequency: 1
-  num_workers: 7
+  num_workers: 4
   fast_read: false
   dataset_size_proportional_sampling: true
   pin_memory: false
   checkpoint_interval: 1000
   evaluation_interval: 1000
-  clip_gradients: true
+  clip_gradients: false
   clip_norm_mode: all
   early_stop:
     enabled: false
     patience: 4000
-    criteria: coco/caption_bleu4
+    criteria: hateful_memes/roc_auc
     minimize: false
   lr_scheduler: true
-  lr_steps:
-  - 15000
-  - 25000
-  - 35000
-  - 45000
+  lr_steps: []
   lr_ratio: 0.1
-  use_warmup: true
+  use_warmup: false
   warmup_factor: 0.2
   warmup_iterations: 1000
-  device: cpu
+  device: cuda
   local_rank: null
   verbose_dump: false
   find_unused_parameters: false
   evaluate_metrics: false
   detect_anomaly: false
   fp16: false
-  max_grad_l2_norm: 0.25
-  task_size_proportional_sampling: true
 trainer:
   type: lightning
   params:
@@ -68,52 +62,56 @@ trainer:
     progress_bar_refresh_rate: 0
 evaluation:
   metrics:
-  - caption_bleu4
+  - accuracy
+  - binary_f1
+  - roc_auc
   use_cpu: false
   predict: false
-  predict_file_format: json
+  predict_file_format: csv
   reporter:
     type: file
     params: {}
 model_config:
-  butd:
-    model_data_dir: /home/terasquid/.cache/torch/mmf/data
+  mmbt:
+    training_head_type: classification
+    bert_model_name: bert-base-uncased
+    direct_features_input: false
+    freeze_text: false
+    freeze_modal: false
+    freeze_complete_base: false
+    finetune_lr_multiplier: 1
+    fused_feature_only: false
+    modal_hidden_size: 2048
+    text_hidden_size: 768
+    num_labels: 2
+    modal_encoder:
+      type: resnet152
+      params:
+        pretrained: true
+        pool_type: avg
+        num_output_features: 1
+    use_modal_start_token: true
+    use_modal_end_token: true
+    text_encoder:
+      type: transformer
+      params:
+        num_segments: 2
+        bert_model_name: bert-base-uncased
+        hidden_size: 768
+        num_hidden_layers: 12
+        num_attention_heads: 12
+        output_attentions: false
+        output_hidden_states: false
     losses:
-    - type: caption_cross_entropy
-    classifier:
-      type: language_decoder
-      params:
-        dropout: 0.5
-        hidden_dim: 1024
-        feature_dim: 2048
-        fc_bias_init: 0
-    image_feature_embeddings:
-    - modal_combine:
-        type: top_down_attention_lstm
-        params:
-          dropout: 0.5
-          hidden_dim: 1024
-          attention_dim: 1024
-      normalization: softmax
-      transform:
-        type: linear
-        params:
-          out_dim: 1
-    image_feature_dim: 2048
-    embedding_dim: 300
-    image_feature_encodings:
-    - type: finetune_faster_rcnn_fpn_fc7
-      params:
-        bias_file: models/detectron.defaults/fc7_b.pkl
-        weights_file: models/detectron.defaults/fc7_w.pkl
-        model_data_dir: /home/terasquid/.cache/torch/mmf/data
-    inference:
-      type: greedy
-    model: butd
+    - type: cross_entropy
+    model: mmbt
 dataset_config:
-  vqarad:
-    data_dir: /home/terasquid/Documents/github/med-vqa-data/
-    data_folder: vqa_rad
+  hateful_memes:
+    data_dir: /home/roboticslab/Documents/MED-VQA/dataset/med-vqa-data/
+    depth_first: false
+    fast_read: false
+    use_images: true
+    use_features: false
     build_attributes:
       min_count: 1
       split_regex: ' '
@@ -123,43 +121,99 @@ dataset_config:
       remove:
       - '?'
       - .
+    images:
+      train:
+      - hateful_memes/
+      val:
+      - hateful_memes/
+      test:
+      - hateful_memes/
+    features:
+      train:
+      - hateful_memes/defaults/features/detectron.lmdb
+      val:
+      - hateful_memes/defaults/features/detectron.lmdb
+      test:
+      - hateful_memes/defaults/features/detectron.lmdb
+    annotations:
+      train:
+      - hateful_memes/train.jsonl
+      val:
+      - hateful_memes/dev_unseen.jsonl
+      test:
+      - hateful_memes/test_unseen.jsonl
+    max_features: 100
     processors:
       text_processor:
-        type: vocab
+        type: bert_tokenizer
         params:
-          max_length: 10
+          max_length: 14
           vocab:
             type: random
-            vocab_file: vocabs/vqarad_question_vocab.txt
-        preprocessor:
-          type: simple_sentence
-          params: {}
-      answer_processor:
-        type: multi_hot_answer_from_vocab
-        params:
-          num_answers: 1
-          vocab_file: vocabs/vqarad_answer_vocab.txt
+            vocab_file: vocabs/VQA_MED_2019_TRAIN_vocab.txt
           preprocessor:
-            type: simple_word
+            type: simple_sentence
             params: {}
-datasets: vqarad
-model: butd
-config: projects/butd/configs/coco/defaults.yaml
+          tokenizer_config:
+            type: bert-base-uncased
+            params:
+              do_lower_case: true
+          mask_probability: 0
+          max_seq_length: 128
+      bbox_processor:
+        type: bbox
+        params:
+          max_length: 50
+      image_processor:
+        type: torchvision_transforms
+        params:
+          transforms:
+          - type: Resize
+            params:
+              size:
+              - 256
+              - 256
+          - type: CenterCrop
+            params:
+              size:
+              - 224
+              - 224
+          - ToTensor
+          - GrayScaleTo3Channels
+          - type: Normalize
+            params:
+              mean:
+              - 0.46777044
+              - 0.44531429
+              - 0.40661017
+              std:
+              - 0.12221994
+              - 0.12145835
+              - 0.14380469
+    return_features_info: false
+  training:
+    max_updates: 22000
+datasets: hateful_memes
+model: mmbt
+config: projects/hateful_memes/configs/mmbt/defaults.yaml
 run_type: train_inference
 optimizer:
   allow_unused_parameters: false
   enable_state_sharding: false
-  type: Adamax
+  type: adam_w
   params:
+    lr: 1.0e-05
     eps: 1.0e-08
-    lr: 0.01
-    weight_decay: 0
-scheduler: {}
+scheduler:
+  type: warmup_linear
+  params:
+    num_warmup_steps: 2000
+    num_training_steps: 22000
 env:
-  cache_dir: /home/terasquid/.cache/torch/mmf
+  cache_dir: /home/roboticslab/.cache/torch/mmf
   dataset_zoo: configs/zoo/datasets.yaml
   model_zoo: configs/zoo/models.yaml
-  data_dir: /home/terasquid/.cache/torch/mmf/data
+  data_dir: /home/roboticslab/.cache/torch/mmf/data
   save_dir: ./save
   log_dir: ''
   report_dir: ''
@@ -179,7 +233,8 @@ checkpoint:
   resume_pretrained: false
   resume_zoo: null
   zoo_config_override: false
-  pretrained_state_mapping: {}
+  pretrained_state_mapping:
+    bert: bert
   max_to_keep: -1
   save_git_details: true
   reset:
