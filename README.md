@@ -1,6 +1,6 @@
 # Med-VQA
 
-There isn't a single dataset or a group of datasets on which the Med-VQA literature agrees upon to test their model. So we ourself chose the dataset and tested it on 3 VQA models. Two of these are made on top of Facebook AI Reasearch's [Multi-Modal Framework (MMF)](https://mmf.sh/). 
+In this repository we have tested 3 VQA models on the ImageCLEF-2019 dataset. Two of these are made on top of Facebook AI Reasearch's [Multi-Modal Framework (MMF)](https://mmf.sh/). 
 
 
 |Model Name| Accuracy| Number of Epochs|
